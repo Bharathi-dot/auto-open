@@ -158,38 +158,48 @@ namespace demo_1
             }
         }
 
+
         public List<ApplicationInfo> GetFilteredApplications()
         {
-            // Step 1: Retrieve all installed applications
             var installedApplications = GetInstalledApplications();
 
-            // Step 2: Filter based on file paths (exclude system and irrelevant apps)
+            // Filter out system and irrelevant paths
             var filteredApps = installedApplications
                 .Where(app => IsUserRelevantApplication(app.InstallLocation))
                 .ToList();
 
-            // Step 3: Get recently used applications from Event Logs or UserAssist Registry
             var recentApps = GetRecentlyUsedApplications();
-
-            // Step 4: Retrieve frequent applications from Jump Lists
             var jumpListApps = GetApplicationsFromJumpLists();
 
-            // Step 5: Combine filtered apps with recent and Jump List apps
-            var prioritizedApps = filteredApps
-                .Select(app =>
+            // Combine all application names into a single HashSet for fast lookup
+            var combinedAppNames = new HashSet<string>(filteredApps.Select(app => app.Name), StringComparer.OrdinalIgnoreCase);
+            combinedAppNames.UnionWith(recentApps);
+            combinedAppNames.UnionWith(jumpListApps);
+
+            // Create a dictionary to keep track of unique applications by name
+            var uniqueApps = new Dictionary<string, ApplicationInfo>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var app in installedApplications)
+            {
+                if (combinedAppNames.Contains(app.Name))
                 {
-                    // Mark applications if found in recent or Jump List apps
+                    // Prioritize marking if found in recent or Jump List apps
                     if (recentApps.Any(ra => ra.Equals(app.Name, StringComparison.OrdinalIgnoreCase)) ||
                         jumpListApps.Any(ja => ja.Equals(app.Name, StringComparison.OrdinalIgnoreCase)))
                     {
-                        app.Name = $"* {app.Name}";  // Indicate priority by marking with an asterisk
+                        app.IsPriority = true;  // Use a flag instead of modifying the name
                     }
-                    return app;
-                })
-                .ToList();
 
-            // Step 6: Return the prioritized applications
-            return prioritizedApps;
+                    // Add to dictionary if not already present
+                    if (!uniqueApps.ContainsKey(app.Name))
+                    {
+                        uniqueApps.Add(app.Name, app);
+                    }
+                }
+            }
+
+            // Return only distinct applications
+            return uniqueApps.Values.ToList();
         }
 
         // Method to get installed applications from the registry
@@ -385,7 +395,9 @@ namespace demo_1
         {
             public string Name { get; set; }
             public string InstallLocation { get; set; }
-            public DateTime? LastUsed { get; set; }  
+            public DateTime? LastUsed { get; set; }
+            public bool IsPriority { get; set; } 
+
 
         }
 
